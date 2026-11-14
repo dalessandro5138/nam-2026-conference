@@ -123,6 +123,16 @@ describe('Every endpoint answers', () => {
     }
   });
 
+  test('trackSlug takes a comma list and returns the union of those tracks', async () => {
+    const [a, b] = (await api.json('/bootstrap')).tracks.map((t) => t.slug);
+    const only = async (q) => api.json(`/sessions?trackSlug=${q}`);
+    const [ra, rb, both] = [await only(a), await only(b), await only(`${a},${b}`)];
+    assert.ok(ra.length > 0 && rb.length > 0);
+    assert.equal(both.length, ra.length + rb.length);
+    assert.ok(both.every((s) => [a, b].includes(s.track.slug)));
+    assert.equal((await only(`${a},`)).length, ra.length, 'blank entries are dropped');
+  });
+
   test('the health check reports ok and the session count', async () => {
     const res = await api.get('/health');
     assert.equal(res.status, 200, `GET /health → ${res.status}`);
