@@ -55,6 +55,48 @@ test.describe('Schedule', () => {
     await expect(page.getByTestId('search-input')).toHaveValue('agents');
   });
 
+  test('several tracks can be picked and dropped, and the grid stays blocked', async ({ page }) => {
+    const days = await conferenceDays();
+    const tracks = (await (await fetch(`${API}/bootstrap`)).json()).tracks;
+    const [a, b] = tracks;
+    const count = async (slugs) => {
+      const rows = await (await fetch(`${API}/sessions?day=${days[0]}&trackSlug=${slugs}`)).json();
+      return `${rows.length} session${rows.length === 1 ? '' : 's'}`;
+    };
+    const pill = (t) => page.getByRole('button', { name: t.shortName ?? t.name, exact: true });
+    const open = async () => {
+      const filtersBtn = page.getByRole('button', { name: /^Filters/ });
+      if (await filtersBtn.isVisible()) await filtersBtn.click();
+    };
+
+    // a single-track link behaves as before
+    await visit(page, `/schedule?track=${a.slug}&view=list`, { at: await momentOn(0, MID_SESSION_TIME) });
+    await waitForResults(page);
+    await open();
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('result-count')).toHaveText(await count(a.slug));
+
+    await pill(b).click();
+    await waitForResults(page);
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page).toHaveURL(new RegExp(`track=${a.slug}(,|%2C)${b.slug}`));
+    await expect(page.getByTestId('result-count')).toHaveText(await count(`${a.slug},${b.slug}`));
+    await expect(page.getByTestId('grid-blocked-notice')).toBeVisible();
+    await expect(page.getByTestId('view-grid')).toBeDisabled();
+    await shotForPR(page, 'two tracks selected on the Track filter');
+
+    await pill(b).click();
+    await waitForResults(page);
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('result-count')).toHaveText(await count(a.slug));
+
+    await pill(a).click();
+    await waitForResults(page);
+    await expect(page.getByRole('button', { name: 'All', exact: true })).toBeVisible();
+    await expect(page).not.toHaveURL(/track=/);
+    await expect(page.getByTestId('grid-blocked-notice')).toHaveCount(0);
+  });
+
   test('filtering by venue only returns that venue', async ({ page }) => {
     await visit(page, '/schedule?venue=2&view=list');
     await waitForResults(page);
